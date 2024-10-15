@@ -7,6 +7,7 @@ const Deck = card.Deck;
 const player = @import("player.zig");
 const Player = player.Player;
 const Players = player.Players;
+const PlayerTurn = player.PlayerTurn;
 
 pub const Game = struct {
     const Self = @This();
@@ -23,7 +24,8 @@ pub const Game = struct {
     current_card: Card.Value,
     discard: Deck,
     players: Players,
-    current_player: u8,
+    current_player: usize,
+    current_player_turn: PlayerTurn,
     status: Status,
 
     pub fn init(
@@ -62,6 +64,7 @@ pub const Game = struct {
             .draw_pile = draw_pile,
             .current_card = current_card,
             .current_player = 0,
+            .current_player_turn = PlayerTurn.init(),
             .players = players,
             .discard = discard,
             .status = Status.starting,
