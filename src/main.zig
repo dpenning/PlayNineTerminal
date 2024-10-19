@@ -148,8 +148,6 @@ pub fn drawGameState(
     const padding_char_size = .{ .width = 2, .height = 1 };
     const deck_char_size = .{ .width = 18, .height = 5 };
 
-    try ts.resetScreen();
-
     var current_col: u8 = 0;
     var current_row: u8 = 1;
     for (gs.players.items, 0..) |p, index| {
@@ -224,7 +222,12 @@ pub fn drawGameState(
             );
             try ts.write(padding_left_middle);
 
-            const str = try getCardRow(allocator, &p, 0, gs.current_player_turn.selection_index);
+            var selection_index = gs.current_player_turn.selection_index;
+            if (gs.current_player != index) {
+                selection_index = -1;
+            }
+
+            const str = try getCardRow(allocator, &p, 0, selection_index);
             try ts.write(str);
             defer allocator.free(str);
 
@@ -483,11 +486,11 @@ pub fn main() !void {
 
     // Prep the terminal to be the right state to show the text version of the game.
     var terminal_state = try terminal.Terminal.init();
+    try terminal_state.resetScreen();
 
     // Start Game Loop
     app: while (true) {
         // Ask the player if they want to continue playing the game.
-        try terminal_state.resetScreen();
         const size = terminal_state.getWinSize();
         const center_col: u8 = @truncate(size.ws_col / 2);
         const center_row: u8 = @truncate(size.ws_row / 2);
@@ -548,7 +551,6 @@ pub fn main() !void {
                             break :blk num_players - 1;
                         }
                     };
-                    try terminal_state.resetScreen();
                 },
                 GI.right => {
                     num_players = blk: {
@@ -558,7 +560,6 @@ pub fn main() !void {
                             break :blk num_players + 1;
                         }
                     };
-                    try terminal_state.resetScreen();
                 },
                 GI.start => {
                     break :menu;
@@ -577,6 +578,7 @@ pub fn main() !void {
             prng.random(),
         );
         defer game_state.deinit();
+        try terminal_state.resetScreen();
 
         game: while (game_state.status != game.Game.Status.ended) {
             // Get a ref to the current player, and then manipulate that player and the game state.
@@ -587,6 +589,7 @@ pub fn main() !void {
                 game_state.status = game.Game.Status.ended;
 
                 // break out of the while loop to move to the next game loop, deciding whether to exit the program.
+                try terminal_state.resetScreen();
                 break :game;
             }
 
@@ -610,21 +613,46 @@ pub fn main() !void {
                                 }
                             },
                             .exit => {
+                                try terminal_state.resetScreen();
                                 break :game;
                             },
-                            .select, .start, .cancel, .none => {},
+                            .select => {
+                                if (game_state.current_player_turn.selection_index ==
+                                    @intFromEnum(player.TurnSelectionOption.draw_pile))
+                                {
+                                    game_state.current_player_turn.card_was_drawn_from_draw = true;
+                                    game_state.current_card = game_state.dealCard();
+                                } else {
+                                    game_state.current_player_turn.card_was_drawn_from_draw = false;
+                                }
+                                game_state.current_player_turn.phase = .replace_card_choice;
+
+                                const board = &game_state.players.items[game_state.current_player].board;
+                                var card_choice: u8 = 0;
+                                while (card_choice <= 7 and board[card_choice % 4][card_choice / 4].flipped) {
+                                    card_choice += 1;
+                                }
+                                if (card_choice > 7) {
+                                    game_state.status = .ending;
+                                }
+                                game_state.current_player_turn.selection_index = @intCast(card_choice);
+                            },
+                            .start, .cancel, .none => {},
                         }
                     },
                     .replace_card_choice => {
                         switch (input) {
-                            .left => {},
-                            .right => {},
-                            .up => {},
-                            .down => {},
+                            .up, .left => {},
+                            .down, .right => {},
                             .select => {},
                             .start => {},
-                            .cancel => {},
+                            .cancel => {
+                                if (!game_state.current_player_turn.card_was_drawn_from_draw) {
+                                    game_state.current_player_turn.phase = .draw_pile_choice;
+                                }
+                            },
                             .exit => {
+                                try terminal_state.resetScreen();
                                 break :game;
                             },
                             .none => {},
@@ -640,26 +668,13 @@ pub fn main() !void {
                             .start => {},
                             .cancel => {},
                             .exit => {
+                                try terminal_state.resetScreen();
                                 break :game;
                             },
                             .none => {},
                         }
                     },
                     .done => {},
-                }
-
-                switch (input) {
-                    .left => {},
-                    .right => {},
-                    .up => {},
-                    .down => {},
-                    .select => {},
-                    .start => {},
-                    .cancel => {},
-                    .exit => {
-                        break :app;
-                    },
-                    .none => {},
                 }
             }
 

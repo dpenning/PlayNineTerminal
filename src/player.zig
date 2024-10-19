@@ -58,17 +58,8 @@ pub const PlayerTurn = struct {
     // Current phase of the turn.
     phase: Phase,
 
-    // a value that represents what the user wants to
-    // perform the turn action on.
-    // -1 means not selected.
-    // 0-7 is the card option.
-    // 8 is the draw pile.
-    // 9 is the discard pile.
-    // 10 is skip flip.
+    // refer to TurnSelectionOption for values.
     selection_index: i8,
-
-    // The card that was pulled for  placing in the board.
-    drawn_card_value: Card.Value,
 
     // marks whether the card was pulled from discard or not,
     // effects whether the player can revert drawn_card_value.
@@ -90,7 +81,6 @@ pub const PlayerTurn = struct {
         return PlayerTurn{
             .phase = .draw_pile_choice,
             .selection_index = @intFromEnum(TurnSelectionOption.draw_pile),
-            .drawn_card_value = undefined,
             .card_was_drawn_from_draw = false,
             .replaced_card_choice = -1,
             .flip_card_choice = -1,
