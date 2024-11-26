@@ -21,4 +21,4 @@ pub const Card = struct {
     value: Value,
     flipped: bool,
 };
-pub const Deck = std.ArrayList(Card.Value);
+pub const Deck = std.ArrayList(Card);

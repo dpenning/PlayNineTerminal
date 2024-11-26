@@ -2,6 +2,7 @@ const std = @import("std");
 const Card = @import("card.zig").Card;
 
 pub const Player = struct {
+    const Self = @This();
     pub const Control = enum {
         local,
         cpu,
@@ -11,30 +12,74 @@ pub const Player = struct {
     control: Control,
     board: Board,
 
-    pub fn hasCompletedBoard(self: @This()) bool {
+    pub fn numFlippedCards(self: *const Self) u8 {
+        var i: u8 = 0;
         for (self.board) |col| {
             for (col) |card| {
-                if (!card.flipped) {
-                    return false;
+                if (card.flipped) {
+                    i += 1;
                 }
             }
         }
-        return true;
+        return i;
     }
 
-    pub fn flipCard(self: *@This(), col: u8, row: u8) void {
-        std.assert(col < self.board.len);
-        std.assert(row < self.board[0].len);
+    pub fn hasAlmostCompletedBoard(self: *Self) bool {
+        return self.numFlippedCards() == 7;
+    }
 
+    pub fn hasCompletedBoard(self: *Self) bool {
+        return self.numFlippedCards() == 8;
+    }
+
+    pub fn replaceCard(self: *Self, col: usize, row: usize, new_card: Card) Card {
+        const card = self.board[col][row];
+        self.board[col][row] = new_card;
+        return card;
+    }
+
+    pub fn flipCard(self: *Self, col: usize, row: usize) void {
         self.board[col][row].flipped = true;
     }
 
-    pub fn flipAllCards(self: *@This()) void {
+    pub fn flipAllCards(self: *Self) void {
         for (&self.board) |*col| {
             for (col) |*card| {
                 card.flipped = true;
             }
         }
+    }
+
+    pub fn getScore(self: *Self) !i8 {
+        var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+        var rank_match_count_map = std.AutoHashMap(Card.Value, u8).init(gpa.allocator());
+        defer rank_match_count_map.deinit();
+
+        var score: i8 = 0;
+        // get the score with non -5 matches removed
+        for (&self.board) |*col| {
+            if (col[0].value == col[1].value) {
+                try rank_match_count_map.put(col[0].value, (rank_match_count_map.get(col[0].value) orelse 0) + 1);
+                if (col[0].value == .negative_five) {
+                    score -= 10;
+                }
+            } else {
+                score += @intFromEnum(col[0].value) + @intFromEnum(col[1].value);
+            }
+        }
+
+        var rmc_iter = rank_match_count_map.iterator();
+        while (rmc_iter.next()) |entry| {
+            const value: *u8 = entry.value_ptr;
+            score += switch (value.*) {
+                2 => 10,
+                3 => 20,
+                4 => 40,
+                else => 0,
+            };
+        }
+
+        return score;
     }
 };
 pub const Players = std.ArrayList(Player);
@@ -52,7 +97,6 @@ pub const PlayerTurn = struct {
         draw_pile_choice,
         replace_card_choice,
         flip_card_choice,
-        done,
     };
 
     // Current phase of the turn.
