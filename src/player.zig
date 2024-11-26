@@ -71,7 +71,7 @@ pub const Player = struct {
         var rmc_iter = rank_match_count_map.iterator();
         while (rmc_iter.next()) |entry| {
             const value: *u8 = entry.value_ptr;
-            score += switch (value.*) {
+            score -= switch (value.*) {
                 2 => 10,
                 3 => 20,
                 4 => 40,

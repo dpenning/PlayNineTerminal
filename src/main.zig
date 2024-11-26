@@ -17,11 +17,12 @@ pub fn getPlayerName(
     allocator: std.mem.Allocator,
     games_state: *const game.Game,
     index: usize,
+    bold: bool,
 ) ![]u8 {
     const fmt = "{s}Player {d} ({s})" ++ font_reset_esc;
 
     const color_esc = blk: {
-        if (games_state.current_player == index) {
+        if (bold) {
             break :blk bold_esc;
         }
         break :blk regular_esc;
@@ -185,7 +186,7 @@ pub fn drawGameState(
             try ts.write(padding_left_middle);
             current_col += padding_char_size.width;
 
-            const player_name_str = try getPlayerName(allocator, gs, index);
+            const player_name_str = try getPlayerName(allocator, gs, index, gs.current_player == index);
             defer allocator.free(player_name_str);
             try ts.write(player_name_str);
 
@@ -509,7 +510,7 @@ pub fn drawGameState(
             current_row,
         );
 
-        const player_name = try getPlayerName(allocator, gs, gs.current_player);
+        const player_name = try getPlayerName(allocator, gs, gs.current_player, false);
         const str = try std.fmt.allocPrint(
             allocator,
             "{s} is {s}",
@@ -597,6 +598,23 @@ pub fn main() !void {
                 player_count += 1;
             }
 
+            {
+                const input_strs: [4]struct { sized: []const u8, actual: []const u8 } = .{
+                    .{ .sized = "1 2 3 4 : move", .actual = "← → ↑ ↓ : move" },
+                    .{ .sized = "space : select", .actual = "space : select" },
+                    .{ .sized = "enter : start", .actual = "enter : start" },
+                    .{ .sized = "esc : cancel", .actual = "esc : cancel" },
+                };
+                for (input_strs, 2..) |input_str, i| {
+                    try terminal_state.positionCursor(
+                        gpa.allocator(),
+                        center_col - (@as(u8, @truncate((input_str.sized).len)) / 2),
+                        center_row + @as(u8, @intCast(i)),
+                    );
+                    try terminal_state.write(input_str.actual);
+                }
+            }
+
             // make the move for the player.
             const input = try terminal_state.attemptReadForGameInput();
             switch (input) {
@@ -645,6 +663,7 @@ pub fn main() !void {
             // if current player has completed their board, the game is now over.
             if (current_player.hasCompletedBoard()) {
                 game_state.status = game.Game.Status.ended;
+                try drawGameState(gpa.allocator(), &terminal_state, &game_state);
                 break :game;
             }
 
@@ -837,7 +856,7 @@ pub fn main() !void {
         }
 
         // Overlay on top of the game a score screen
-        score_screen: {
+        if (game_state.status == .ended) score_screen: {
             // "                        "
             // " ┌────────────────────┐ "
             // " │ Winner             │ "
@@ -850,9 +869,9 @@ pub fn main() !void {
             // "                        ";
 
             const rect_for_score_screen: struct { x: u8, y: u8, width: u8, height: u8 } = .{
-                .x = center_col - (3 + @as(u8, @intCast(game_state.players.items.len / 2))),
-                .y = center_row - 12,
-                .width = 24,
+                .x = center_col - 15,
+                .y = center_row - (3 + @as(u8, @intCast(game_state.players.items.len / 2))),
+                .width = 30,
                 .height = 6 + @as(u8, @intCast(game_state.players.items.len)),
             };
 
@@ -868,44 +887,44 @@ pub fn main() !void {
             const player_results = try game_state.getPlayerResults(gpa.allocator());
             defer player_results.deinit();
 
-            { // "                        "
+            { // "                              "
                 try terminal_state.positionCursor(
                     gpa.allocator(),
                     starting_col,
                     current_row,
                 );
-                try terminal_state.write("                        ");
+                try terminal_state.write("                              ");
                 current_row += 1;
             }
 
-            { // " ┌────────────────────┐ "
+            { // " ┌──────────────────────────┐ "
                 try terminal_state.positionCursor(
                     gpa.allocator(),
                     starting_col,
                     current_row,
                 );
-                try terminal_state.write(" ┌────────────────────┐ ");
+                try terminal_state.write(" ┌──────────────────────────┐ ");
                 current_row += 1;
             }
-            { // " │ Winner             │ "
+            { // " │ Winner                   │ "
                 try terminal_state.positionCursor(
                     gpa.allocator(),
                     starting_col,
                     current_row,
                 );
-                try terminal_state.write(" │ Winner             │ ");
+                try terminal_state.write(" │ Winner                   │ ");
                 current_row += 1;
             }
-            { // " │                    │ "
+            { // " │                          │ "
                 try terminal_state.positionCursor(
                     gpa.allocator(),
                     starting_col,
                     current_row,
                 );
-                try terminal_state.write(" │                    │ ");
+                try terminal_state.write(" │                          │ ");
                 current_row += 1;
             }
-            { // " │ Player x : <score> │ "
+            { // " │ Player x : <score>       │ "
                 for (player_results.items) |*player_result| {
                     const allocator = gpa.allocator();
 
@@ -921,12 +940,13 @@ pub fn main() !void {
                         allocator,
                         &game_state,
                         player_index,
+                        player_result.rank == 1,
                     );
                     defer allocator.free(player_name);
 
                     const str = try std.fmt.allocPrint(
                         allocator,
-                        " │ {d}. {s} : {d} │ ",
+                        "{d}. {s} : {d}",
                         .{
                             player_result.rank,
                             player_name,
@@ -934,32 +954,37 @@ pub fn main() !void {
                         },
                     );
                     defer allocator.free(str);
-
                     try terminal_state.positionCursor(
                         gpa.allocator(),
                         starting_col,
+                        current_row,
+                    );
+                    try terminal_state.write(" │                          │ ");
+                    try terminal_state.positionCursor(
+                        gpa.allocator(),
+                        starting_col + 3,
                         current_row,
                     );
                     try terminal_state.write(str);
                     current_row += 1;
                 }
             }
-            { // " └────────────────────┘ "
+            { // " └──────────────────────────┘ "
                 try terminal_state.positionCursor(
                     gpa.allocator(),
                     starting_col,
                     current_row,
                 );
-                try terminal_state.write(" └────────────────────┘ ");
+                try terminal_state.write(" └──────────────────────────┘ ");
                 current_row += 1;
             }
-            { // "                        ";
+            { // "                               ";
                 try terminal_state.positionCursor(
                     gpa.allocator(),
                     starting_col,
                     current_row,
                 );
-                try terminal_state.write("                        ");
+                try terminal_state.write("                              ");
                 current_row += 1;
             }
 
