@@ -6,4 +6,14 @@
 
 - termios: No install required (sorry windows, this isnt included in libc)
 
-Thats it, give it a shot
+# Install
+
+`zig build-exe src/main.zig -O ReleaseFast -femit-bin="playnine"`
+
+# Play
+
+`./playnine`
+
+Thats it, give it a shot. controls are at the start of the game.
+
+The draw pile has the card that is being replaced.
